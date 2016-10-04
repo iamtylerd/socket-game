@@ -24,3 +24,8 @@ mongoose.connect(MONGOD_URL, () => {
 	server.listen(PORT, () => console.log(`Server listening on port: ${PORT}`))
 })
 
+io.on('connect', socket => {
+	console.log(`socket connected: ${socket.id}`)
+	socket.on('disconnect', () => console.log('Socket Disconnected'))
+})
+
