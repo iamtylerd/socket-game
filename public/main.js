@@ -1,5 +1,7 @@
 'use strict'
 
+// const gameId = location.pathname.split('/').slice(-1)[0]
+
 const socket = io()
 
 const board = document.querySelector('.board')

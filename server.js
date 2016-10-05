@@ -16,7 +16,23 @@ app.set('view engine', 'pug')
 
 app.use(express.static('public'))
 
-app.get('/', (req, res) => res.render('index'))
+app.get('/', (req, res) => res.render('home'))
+
+app.get('/game', (req, res) =>
+  Game.find().then(games => res.render('index', { games }))
+)
+
+app.get('/game/create', (req, res) => {
+  Game.create({
+    board: [['','',''],['','',''],['','','']],
+    toMove: 'X',
+  })
+  .then(game => res.redirect(`/game/${game._id}`))
+})
+
+app.get('/game/:id', (req, res) => {
+  res.render('game')
+})
 
 mongoose.Promise = Promise
 mongoose.connect(MONGODB_URL, () => {
@@ -34,12 +50,12 @@ const Game = mongoose.model('game', {
 })
 
 io.on('connect', socket => {
-  Game.create({
-    board: [['','',''],['','',''],['','','']],
-    toMove: 'X',
-  })
+  const id = socket.handshake.headers.referer.split('/').slice(-1)[0]
+
+  Game.findById(id)
   .then(g => {
-    socket.game = g
+    socket.join(g._id)
+    socket.gameId = g._id
     socket.emit('new game', g)
   })
   .catch(err => {
@@ -54,16 +70,20 @@ io.on('connect', socket => {
 })
 
 const makeMove = (move, socket) => {
-    if (isFinished(socket.game) || !isSpaceAvailable(socket.game, move)) {
-      return
-    }
+  Game.findById(socket.gameId)
+    .then(game => {
+      if (isFinished(game) || !isSpaceAvailable(game, move)) {
+        return
+      }
 
-    Promise.resolve()
-      .then(() => setMove(socket.game, move))
-      .then(toggleNextMove)
-      .then(setResult)
-      .then(g => g.save())
-      .then(g => socket.emit('move made', g))
+      Promise.resolve()
+        .then(() => setMove(game, move))
+        .then(toggleNextMove)
+        .then(setResult)
+        .then(g => g.save())
+        .then(g => io.to(g._id).emit('move made', g))
+        .catch(console.error)
+    })
 }
 
 const isFinished = game => !!game.result
@@ -124,8 +144,20 @@ const winner = b => {
     return b[0][2]
   }
 
-  // Tie or In-Progress
-  else {
-    return null
+  // Tie
+  if (!movesRemaining(b)) {
+    return 'Tie'
   }
+
+  // In-Progress
+  return null
 }
+
+const movesRemaining = board => {
+  const POSSIBLE_MOVES = 9
+  const movesMade = flatten(board).join('').length
+
+  return POSSIBLE_MOVES - movesMade
+}
+
+const flatten = array => array.reduce((a,b) => a.concat(b))
